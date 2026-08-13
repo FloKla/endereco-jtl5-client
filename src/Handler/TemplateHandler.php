@@ -408,6 +408,7 @@ class TemplateHandler
      * @param string $timestamp The timestamp related to the billing address.
      * @param string $status The status of the billing address.
      * @param string $predictionsSerialized Serialized prediction data for the billing address.
+     * @param string $state The stored state of the billing address (name or ISO code).
      */
     private function addBillingAddressToConfirmationPage(
         phpQueryObject $document,
@@ -420,20 +421,21 @@ class TemplateHandler
         string $additionalInfo,
         string $timestamp,
         string $status,
-        string $predictionsSerialized
+        string $predictionsSerialized,
+        string $state = ''
     ): void {
         if (!$this->isConfirmationPage($document)) {
             return;
         }
 
-        $isJTL51 = false;
-        if (defined('APPLICATION_VERSION')) {
-            $version = APPLICATION_VERSION;
-            /** @phpstan-ignore-next-line */
-            if (version_compare($version, '5.1.0', '>=') && version_compare($version, '5.2.0', '<')) {
-                $isJTL51 = true;
-            }
-        }
+        // The fake form has to expose exactly the same optional address
+        // structure as the normal billing form, otherwise the review check
+        // produces different cache keys and payloads.
+        $hasSubdivision = $this->enderecoService->isSubdivisionFieldEnabled(false)
+            && $this->enderecoService->countryHasSubdivisions($countryCode);
+        $subdivisionCode = $hasSubdivision
+            ? $this->enderecoService->resolveSubdivisionCode($state, $countryCode)
+            : '';
 
         // Set smarty values for billing.
         $smarty->assign('endereco_billing_countrycode', $countryCode)
@@ -442,10 +444,12 @@ class TemplateHandler
             ->assign('endereco_billing_street_name', $streetName)
             ->assign('endereco_billing_building_number', $buildingNumber)
             ->assign('endereco_billing_addinfo', $additionalInfo)
+            ->assign('endereco_billing_has_addinfo', $this->enderecoService->isAdditionalInfoFieldEnabled(false))
+            ->assign('endereco_billing_has_subdivision', $hasSubdivision)
+            ->assign('endereco_billing_subdivision_code', $subdivisionCode)
             ->assign('endereco_billing_ts', $timestamp)
             ->assign('endereco_billing_status', $status)
             ->assign('endereco_billing_predictions', $predictionsSerialized)
-            ->assign('endereco_jtl_5_1_legacymode', $isJTL51)
             ->assign(
                 'endereco_shipping_address_is_different',
                 $this->enderecoService->isBillingDifferentFromShipping()
@@ -478,6 +482,7 @@ class TemplateHandler
      * @param string $timestamp The timestamp related to the shipping address.
      * @param string $status The status of the shipping address.
      * @param string $predictionsSerialized Serialized prediction data for the shipping address.
+     * @param string $state The stored state of the shipping address (name or ISO code).
      */
     private function addShippingAddressToConfirmationPage(
         phpQueryObject $document,
@@ -490,7 +495,8 @@ class TemplateHandler
         string $additionalInfo,
         string $timestamp,
         string $status,
-        string $predictionsSerialized
+        string $predictionsSerialized,
+        string $state = ''
     ): void {
         if (!$this->isConfirmationPage($document)) {
             return;
@@ -500,26 +506,26 @@ class TemplateHandler
             return;
         }
 
-        $isJTL51 = false;
-        if (defined('APPLICATION_VERSION')) {
-            $version = APPLICATION_VERSION;
-            /** @phpstan-ignore-next-line */
-            if (version_compare($version, '5.1.0', '>=') && version_compare($version, '5.2.0', '<')) {
-                $isJTL51 = true;
-            }
-        }
+        // See addBillingAddressToConfirmationPage() for the optional-field rules.
+        $hasSubdivision = $this->enderecoService->isSubdivisionFieldEnabled(true)
+            && $this->enderecoService->countryHasSubdivisions($countryCode);
+        $subdivisionCode = $hasSubdivision
+            ? $this->enderecoService->resolveSubdivisionCode($state, $countryCode)
+            : '';
 
-        // Set smarty values for billing.
+        // Set smarty values for shipping.
         $smarty->assign('endereco_shipping_countrycode', $countryCode)
             ->assign('endereco_shipping_postal_code', $postalCode)
             ->assign('endereco_shipping_locality', $locality)
             ->assign('endereco_shipping_street_name', $streetName)
             ->assign('endereco_shipping_building_number', $buildingNumber)
             ->assign('endereco_shipping_addinfo', $additionalInfo)
+            ->assign('endereco_shipping_has_addinfo', $this->enderecoService->isAdditionalInfoFieldEnabled(true))
+            ->assign('endereco_shipping_has_subdivision', $hasSubdivision)
+            ->assign('endereco_shipping_subdivision_code', $subdivisionCode)
             ->assign('endereco_shipping_ts', $timestamp)
             ->assign('endereco_shipping_status', $status)
-            ->assign('endereco_shipping_predictions', $predictionsSerialized)
-            ->assign('endereco_jtl_5_1_legacymode', $isJTL51);
+            ->assign('endereco_shipping_predictions', $predictionsSerialized);
 
         $html = $smarty->fetch(self::TEMPLATE_CHECKOUT_FAKE_SHIPPING_FORM);
 
@@ -603,7 +609,8 @@ class TemplateHandler
             $_SESSION['Kunde']->cAdressZusatz ?? '',
             $_SESSION['EnderecoBillingAddressMeta']['enderecoamsts'] ?? '',
             $_SESSION['EnderecoBillingAddressMeta']['enderecoamsstatus'] ?? '',
-            $_SESSION['EnderecoBillingAddressMeta']['enderecoamspredictions'] ?? ''
+            $_SESSION['EnderecoBillingAddressMeta']['enderecoamspredictions'] ?? '',
+            $_SESSION['Kunde']->cBundesland ?? ''
         );
 
         $this->addShippingAddressToConfirmationPage(
@@ -617,7 +624,8 @@ class TemplateHandler
             $_SESSION['Lieferadresse']->cAdressZusatz ?? '',
             $_SESSION['EnderecoShippingAddressMeta']['enderecoamsts'] ?? '',
             $_SESSION['EnderecoShippingAddressMeta']['enderecoamsstatus'] ?? '',
-            $_SESSION['EnderecoShippingAddressMeta']['enderecoamspredictions'] ?? ''
+            $_SESSION['EnderecoShippingAddressMeta']['enderecoamspredictions'] ?? '',
+            $_SESSION['Lieferadresse']->cBundesland ?? ''
         );
 
         $this->includeSDK($document, $smarty);

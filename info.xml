@@ -6,9 +6,9 @@
     <URL>https://www.endereco.de</URL>
     <PluginID>endereco_jtl5_client</PluginID>
     <XMLVersion>101</XMLVersion>
-    <MinShopVersion>5.1.2</MinShopVersion>
+    <MinShopVersion>5.3.0</MinShopVersion>
     <CreateDate>2021-03-24</CreateDate>
-    <Version>1.3.2</Version>
+    <Version>1.4.0</Version>
     <ExsID>f9cb7819-9dad-4a4f-8aea-fcca10d6b59c</ExsID>
     <Install>
         <FlushTags>CACHING_GROUP_TEMPLATE</FlushTags>
@@ -173,6 +173,42 @@
                 <VariableLocalized iso="ENG">The entered address was found in another country.</VariableLocalized>
                 <Description></Description>
                 <Name>endereco_jtl5_client_status_error_country_code_needs_correction</Name>
+            </Variable>
+            <Variable>
+                <VariableLocalized iso="GER">Die Hausnummer fehlt in der Eingabe.</VariableLocalized>
+                <VariableLocalized iso="ENG">The house number is missing from the input.</VariableLocalized>
+                <Description></Description>
+                <Name>endereco_jtl5_client_error_missing_building_number</Name>
+            </Variable>
+            <Variable>
+                <VariableLocalized iso="GER">Mit der eingegebenen Hausnummer konnte die Adresse nicht verifiziert werden.</VariableLocalized>
+                <VariableLocalized iso="ENG">The address could not be verified with the entered house number.</VariableLocalized>
+                <Description></Description>
+                <Name>endereco_jtl5_client_error_unresolvable_building_number</Name>
+            </Variable>
+            <Variable>
+                <VariableLocalized iso="GER">Die Packstation-Adresse konnte nicht gefunden werden.</VariableLocalized>
+                <VariableLocalized iso="ENG">The Packstation address could not be found.</VariableLocalized>
+                <Description></Description>
+                <Name>endereco_jtl5_client_error_unresolvable_packstation</Name>
+            </Variable>
+            <Variable>
+                <VariableLocalized iso="GER">Die Postfilialen-Adresse konnte nicht gefunden werden.</VariableLocalized>
+                <VariableLocalized iso="ENG">The post office address could not be found.</VariableLocalized>
+                <Description></Description>
+                <Name>endereco_jtl5_client_error_unresolvable_postoffice</Name>
+            </Variable>
+            <Variable>
+                <VariableLocalized iso="GER">Die Postnummer ist ungültig.</VariableLocalized>
+                <VariableLocalized iso="ENG">The Postnummer is invalid.</VariableLocalized>
+                <Description></Description>
+                <Name>endereco_jtl5_client_error_invalid_postnummer</Name>
+            </Variable>
+            <Variable>
+                <VariableLocalized iso="GER">Die Postnummer fehlt in der Eingabe.</VariableLocalized>
+                <VariableLocalized iso="ENG">The Postnummer is missing from the input.</VariableLocalized>
+                <Description></Description>
+                <Name>endereco_jtl5_client_error_missing_postnummer</Name>
             </Variable>
         </Locales>
         <Adminmenu>

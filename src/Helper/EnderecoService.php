@@ -10,6 +10,7 @@ use JTL\DB\NiceDB;
 use JTL\DB\DbInterface;
 use JTL\Helpers\Text;
 use JTL\Plugin\Plugin;
+use JTL\Shop;
 use JTL\Plugin\PluginInterface;
 use Plugin\endereco_jtl5_client\src\Structures\AddressCheckResult;
 use InvalidArgumentException;
@@ -107,6 +108,220 @@ class EnderecoService
     }
 
     /**
+     * Builds the addressCheck request message from normalized address data.
+     *
+     * This builder is the single source for the request payload used by the
+     * server-side address check, the session request cache lookup and the cache
+     * reconstruction from browser metadata. All three must produce identical
+     * messages for identical addresses, because the message doubles as cache key.
+     *
+     * The distinction between "field absent" and "field present but empty" is
+     * preserved: the optional keys 'additionalInfo' and 'subdivisionCode' are
+     * only included in the message when they exist in $addressData. All values
+     * receive the same html_entity_decode() treatment so that values coming
+     * from the database (HTML entities) and from the browser (raw) produce the
+     * same cache keys.
+     *
+     * @param array<string,string> $addressData Address with keys 'countryCode', 'postalCode',
+     *                                          'locality', 'streetName', 'buildingNumber' and
+     *                                          optionally 'additionalInfo' and 'subdivisionCode'.
+     *
+     * @return array<string,mixed> The JSON-RPC addressCheck message.
+     */
+    public function buildAddressCheckMessage(array $addressData): array
+    {
+        $params = [
+            'language' => 'de',
+            'country' => strtoupper($addressData['countryCode'] ?? ''),
+            'postCode' => html_entity_decode($addressData['postalCode'] ?? ''),
+            'cityName' => html_entity_decode($addressData['locality'] ?? ''),
+        ];
+
+        if (empty(trim($addressData['buildingNumber'] ?? ''))) {
+            $params['streetFull'] = html_entity_decode($addressData['streetName'] ?? '');
+        } else {
+            $params['street'] = html_entity_decode($addressData['streetName'] ?? '');
+            $params['houseNumber'] = html_entity_decode($addressData['buildingNumber'] ?? '');
+        }
+
+        if (array_key_exists('subdivisionCode', $addressData)) {
+            $params['subdivisionCode'] = html_entity_decode($addressData['subdivisionCode']);
+        }
+
+        if (array_key_exists('additionalInfo', $addressData)) {
+            $params['additionalInfo'] = html_entity_decode($addressData['additionalInfo']);
+        }
+
+        return [
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'addressCheck',
+            'params' => $params
+        ];
+    }
+
+    /**
+     * Creates normalized address data from a JTL address object.
+     *
+     * Core address fields are always included. The optional fields mirror what
+     * the frontend sends: additionalInfo is included only when the applicable
+     * JTL form setting enables the field (empty string when enabled but empty),
+     * subdivisionCode only when the applicable state field is enabled and the
+     * selected country has ISO subdivisions configured in the shop.
+     *
+     * @param mixed $address Customer, Lieferadresse or DeliveryAddressTemplate.
+     *
+     * @return array<string,string> Normalized address data for buildAddressCheckMessage().
+     */
+    public function createAddressDataFromObject($address): array
+    {
+        $isShipping = !$this->isObjectCustomer($address);
+        $countryCode = strtoupper($address->cLand ?? '');
+
+        $addressData = [
+            'countryCode' => $countryCode,
+            'postalCode' => $address->cPLZ ?? '',
+            'locality' => $address->cOrt ?? '',
+            'streetName' => $address->cStrasse ?? '',
+            'buildingNumber' => $address->cHausnummer ?? '',
+        ];
+
+        if ($this->isSubdivisionFieldEnabled($isShipping) && $this->countryHasSubdivisions($countryCode)) {
+            $addressData['subdivisionCode'] = $this->resolveSubdivisionCode(
+                $address->cBundesland ?? '',
+                $countryCode
+            );
+        }
+
+        if ($this->isAdditionalInfoFieldEnabled($isShipping)) {
+            $addressData['additionalInfo'] = $address->cAdressZusatz ?? '';
+        }
+
+        return $addressData;
+    }
+
+    /**
+     * Checks whether the JTL form settings render the state field.
+     *
+     * @param bool $isShipping True for the shipping address form, false for billing.
+     *
+     * @return bool True when the Bundesland field is part of the form.
+     */
+    public function isSubdivisionFieldEnabled(bool $isShipping): bool
+    {
+        $settingName = $isShipping
+            ? 'lieferadresse_abfragen_bundesland'
+            : 'kundenregistrierung_abfragen_bundesland';
+
+        return 'N' !== Shop::getSettingValue(\CONF_KUNDEN, $settingName);
+    }
+
+    /**
+     * Checks whether the JTL form settings render the additional info field.
+     *
+     * @param bool $isShipping True for the shipping address form, false for billing.
+     *
+     * @return bool True when the Adresszusatz field is part of the form.
+     */
+    public function isAdditionalInfoFieldEnabled(bool $isShipping): bool
+    {
+        $settingName = $isShipping
+            ? 'lieferadresse_abfragen_adresszusatz'
+            : 'kundenregistrierung_abfragen_adresszusatz';
+
+        return 'N' !== Shop::getSettingValue(\CONF_KUNDEN, $settingName);
+    }
+
+    /**
+     * Checks whether the shop has ISO subdivisions configured for a country.
+     *
+     * JTL renders a state select with ISO-3166-2 values only for countries
+     * present in tstaat; other countries fall back to a free-text input that
+     * the frontend treats as inactive for subdivision handling.
+     *
+     * @param string $countryCode ISO-3166-1 alpha-2 country code.
+     *
+     * @return bool True when tstaat contains subdivisions for the country.
+     */
+    public function countryHasSubdivisions(string $countryCode): bool
+    {
+        if ('' === trim($countryCode)) {
+            return false;
+        }
+
+        $row = $this->dbConnection->queryPrepared(
+            'SELECT `kStaat` FROM `tstaat` WHERE `cLandIso` = :iso LIMIT 1',
+            [':iso' => strtoupper($countryCode)],
+            1
+        );
+
+        return is_object($row) && !empty($row->kStaat);
+    }
+
+    /**
+     * Resolves a stored state value to JTL's ISO-3166-2 subdivision code.
+     *
+     * JTL persists state names such as "Bayern" while the frontend works with
+     * ISO codes such as "DE-BY". This resolver accepts both representations and
+     * returns the ISO code, or an empty string when the value cannot be resolved
+     * for the given country.
+     *
+     * @param string|null $stateValue Stored state value (name or ISO code).
+     * @param string $countryCode ISO-3166-1 alpha-2 country code.
+     *
+     * @return string The ISO-3166-2 code or '' when unresolvable or empty.
+     */
+    public function resolveSubdivisionCode(?string $stateValue, string $countryCode): string
+    {
+        $stateValue = trim(html_entity_decode((string) $stateValue));
+        if ('' === $stateValue || '' === trim($countryCode)) {
+            return '';
+        }
+
+        $row = $this->dbConnection->queryPrepared(
+            'SELECT `cCode` FROM `tstaat`
+             WHERE `cLandIso` = :iso AND (`cCode` = :value OR `cName` = :value) LIMIT 1',
+            [':iso' => strtoupper($countryCode), ':value' => $stateValue],
+            1
+        );
+
+        if (is_object($row) && !empty($row->cCode)) {
+            return (string) $row->cCode;
+        }
+
+        return '';
+    }
+
+    /**
+     * Resolves an ISO-3166-2 subdivision code to the state name JTL persists.
+     *
+     * @param string|null $subdivisionCode ISO-3166-2 code such as "DE-BY".
+     * @param string $countryCode ISO-3166-1 alpha-2 country code.
+     *
+     * @return string JTL's state name, or the input value when unresolvable.
+     */
+    public function resolveSubdivisionName(?string $subdivisionCode, string $countryCode): string
+    {
+        $subdivisionCode = trim((string) $subdivisionCode);
+        if ('' === $subdivisionCode) {
+            return '';
+        }
+
+        $row = $this->dbConnection->queryPrepared(
+            'SELECT `cName` FROM `tstaat`
+             WHERE `cLandIso` = :iso AND (`cCode` = :value OR `cName` = :value) LIMIT 1',
+            [':iso' => strtoupper($countryCode), ':value' => $subdivisionCode],
+            1
+        );
+
+        if (is_object($row) && !empty($row->cName)) {
+            return (string) $row->cName;
+        }
+
+        return $subdivisionCode;
+    }
+
+    /**
      * Validates and checks an address using the AddressCheck service.
      *
      * This method takes an address object, which can be of type Customer, Lieferadresse,
@@ -146,26 +361,9 @@ class EnderecoService
 
         // Check address.
         try {
-            $message = array(
-                'jsonrpc' => '2.0',
-                'id' => 1,
-                'method' => 'addressCheck',
-                'params' => array(
-                    'language' => 'de',
-                    'country' => strtoupper($address->cLand),
-                    'postCode' => html_entity_decode($address->cPLZ),
-                    'cityName' => html_entity_decode($address->cOrt),
-                )
+            $message = $this->buildAddressCheckMessage(
+                $this->createAddressDataFromObject($address)
             );
-
-            if (empty(trim($address->cHausnummer))) {
-                $message['params']['streetFull'] = html_entity_decode($address->cStrasse);
-            } else {
-                $message['params']['street'] = html_entity_decode($address->cStrasse);
-                $message['params']['houseNumber'] = html_entity_decode($address->cHausnummer);
-            }
-
-            $message['params']['additionalInfo'] = $address->cAdressZusatz ?? '';
 
             $newHeaders = array(
                 'Content-Type' => 'application/json',
@@ -225,28 +423,10 @@ class EnderecoService
         // Create address check result.
         $addressCheckResult = new AddressCheckResult();
 
-        // Create a fake meta.
-        $message = array(
-            'jsonrpc' => '2.0',
-            'id' => 1,
-            'method' => 'addressCheck',
-            'params' => array(
-                'language' => 'de',
-                'country' => strtoupper($address->cLand),
-                'postCode' => html_entity_decode($address->cPLZ),
-                'cityName' => html_entity_decode($address->cOrt),
-            )
+        // Recreate the request the check would use; it doubles as the cache key.
+        $message = $this->buildAddressCheckMessage(
+            $this->createAddressDataFromObject($address)
         );
-
-        if (empty(trim($address->cHausnummer))) {
-            $message['params']['streetFull'] = html_entity_decode($address->cStrasse);
-        } else {
-            $message['params']['street'] = html_entity_decode($address->cStrasse);
-            $message['params']['houseNumber'] = html_entity_decode($address->cHausnummer);
-        }
-
-        $additionalInfos = $address->cAdressZusatz ?? '';
-        $message['params']['additionalInfo'] = html_entity_decode($additionalInfos);
 
         $response = $_SESSION['EnderecoRequestCache'][$this->createRequestKey($message)] ?? null;
 
@@ -369,6 +549,7 @@ class EnderecoService
             $correctionArray = $checkResult->getAutocorrectionArray();
             $mapping = [
                 'countryCode' => 'cLand',
+                'subdivisionCode' => 'cBundesland',
                 'postalCode' => 'cPLZ',
                 'locality' => 'cOrt',
                 'streetName' => 'cStrasse',
@@ -383,6 +564,14 @@ class EnderecoService
                     // Fix for when API returns lower cased country code.
                     if ('countryCode' === $key) {
                         $value = strtoupper($value);
+                    }
+
+                    // JTL persists state names ("Bayern"), not ISO codes ("DE-BY").
+                    if ('subdivisionCode' === $key) {
+                        $value = $this->resolveSubdivisionName(
+                            $value,
+                            strtoupper($correctionArray['countryCode'] ?? ($addressObject->cLand ?? ''))
+                        );
                     }
 
                     $addressObject->$propertyName = $value;
@@ -446,27 +635,9 @@ class EnderecoService
         array $addressData,
         $addressMeta
     ) {
-        // Recreate the request object.
-        $message = array(
-            'jsonrpc' => '2.0',
-            'id' => 1,
-            'method' => 'addressCheck',
-            'params' => array(
-                'language' => 'de',
-                'country' => strtoupper($addressData['countryCode']),
-                'postCode' => $addressData['postalCode'],
-                'cityName' => $addressData['locality'],
-            )
-        );
-
-        if (!empty(trim($addressData['buildingNumber']))) {
-            $message['params']['houseNumber'] = $addressData['buildingNumber'];
-            $message['params']['street'] = $addressData['streetName'];
-        } else {
-            $message['params']['streetFull'] = $addressData['streetName'];
-        }
-
-        $message['params']['additionalInfo'] = $addressData['additionalInfo'] ?? '';
+        // Recreate the request object; optional keys stay optional so the cache
+        // key matches the one the server-side check would produce.
+        $message = $this->buildAddressCheckMessage($addressData);
 
         $fakeAddressCheckResult = new AddressCheckResult();
 

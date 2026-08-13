@@ -7,6 +7,7 @@
     enderecoInitAMS(
         {
             countryCode: '[name="land"]',
+            subdivisionCode: '[name="bundesland"]',
             postalCode: '[name="plz"]',
             locality: '[name="ort"]',
             streetFull: '',
@@ -19,9 +20,19 @@
         },
         {
             addressType: 'billing_address',
-            name: 'billing_address'
+            name: 'billing_address_ams',
+            intent: 'edit',
+            targetSelector: 'body',
+            insertPosition: 'beforeend'
         }
-    )
+    ).then(function(EAO) {
+        if (!EAO) {
+            return;
+        }
+        window.EnderecoIntegrator.watchSubdivisionField(EAO, '[name="bundesland"]');
+    }).catch(function(error) {
+        console.warn('Endereco billing AMS initialization failed:', error);
+    });
 
     enderecoInitPS(
         {
