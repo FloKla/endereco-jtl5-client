@@ -180,12 +180,26 @@ EnderecoIntegrator.watchSubdivisionField = function(EAO, subdivisionSelector) {
         EAO._subscribers.subdivisionCode = (EAO._subscribers.subdivisionCode || []).filter(function(subscriber) {
             return subscriber.object === element;
         });
+        (EAO._subscribers.subdivisionCodeStatus || []).forEach(function(subscriber) {
+            if (!document.contains(subscriber.object) && 'function' === typeof subscriber.cleanupResources) {
+                subscriber.cleanupResources();
+            }
+        });
+        EAO._subscribers.subdivisionCodeStatus = (EAO._subscribers.subdivisionCodeStatus || []).filter(function(subscriber) {
+            return document.contains(subscriber.object);
+        });
 
         if (EAO._subscribers.subdivisionCode.length === 0) {
+            // NOVA only swaps the select element, so the parent container (the SDK's
+            // status target) usually survives; autosubscribing again would add a
+            // duplicate status subscriber per replacement.
+            const hasStatusSubscriberOnParent = (EAO._subscribers.subdivisionCodeStatus || []).some(function(subscriber) {
+                return subscriber.object === element.parentNode;
+            });
             const subscriber = new EnderecoIntegrator.constructors.EnderecoSubscriber(
                 'subdivisionCode',
                 element,
-                {}
+                { autosubscribeToStatus: !hasStatusSubscriberOnParent }
             );
             EAO.addSubscriber(subscriber);
         }

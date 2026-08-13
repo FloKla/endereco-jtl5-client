@@ -354,15 +354,20 @@ class MetaHandler
         // Optional fields stay absent when the form did not submit them, so the
         // rebuilt cache key matches the browser's request. The state only takes
         // part when the country has ISO subdivisions - NOVA's free-text fallback
-        // is not part of the frontend check either.
-        if (isset($postVariable['bundesland']) && $this->enderecoService->countryHasSubdivisions($countryCode)) {
+        // is not part of the frontend check either. The JTL form settings gate
+        // both fields so a tampered POST cannot diverge from buildAddressData().
+        if (
+            isset($postVariable['bundesland'])
+            && $this->enderecoService->isSubdivisionFieldEnabled(false)
+            && $this->enderecoService->countryHasSubdivisions($countryCode)
+        ) {
             $address['subdivisionCode'] = $this->enderecoService->resolveSubdivisionCode(
                 $postVariable['bundesland'],
                 $countryCode
             );
         }
 
-        if (isset($postVariable['adresszusatz'])) {
+        if (isset($postVariable['adresszusatz']) && $this->enderecoService->isAdditionalInfoFieldEnabled(false)) {
             $address['additionalInfo'] = $postVariable['adresszusatz'];
         }
 
@@ -400,14 +405,18 @@ class MetaHandler
         ];
 
         // See extractBillingAddressFromPost() for the optional-field rules.
-        if (isset($shippingPost['bundesland']) && $this->enderecoService->countryHasSubdivisions($countryCode)) {
+        if (
+            isset($shippingPost['bundesland'])
+            && $this->enderecoService->isSubdivisionFieldEnabled(true)
+            && $this->enderecoService->countryHasSubdivisions($countryCode)
+        ) {
             $address['subdivisionCode'] = $this->enderecoService->resolveSubdivisionCode(
                 $shippingPost['bundesland'],
                 $countryCode
             );
         }
 
-        if (isset($shippingPost['adresszusatz'])) {
+        if (isset($shippingPost['adresszusatz']) && $this->enderecoService->isAdditionalInfoFieldEnabled(true)) {
             $address['additionalInfo'] = $shippingPost['adresszusatz'];
         }
 

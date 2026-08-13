@@ -31,18 +31,25 @@
             }
             // Compatibility issue with DHL Wunschpaket.
             if (document.querySelector('select#kLieferadresse')) {
-                document.querySelector('select#kLieferadresse').addEventListener('change', function() {
-                    var $attr = document.querySelector('select#kLieferadresse').selectedOptions[0].getAttribute('data-jtlpack')
+                var applyDeliveryAddressType = function() {
+                    var $option = document.querySelector('select#kLieferadresse').selectedOptions[0];
+                    var $attr = $option ? $option.getAttribute('data-jtlpack') : null;
                     var addressType = 'shipping_address';
                     if ('-2' === $attr) {
                         addressType = 'packstation';
                     } else if ('-3' === $attr) {
                         addressType = 'postoffice';
                     }
+                    if (addressType === EAO.getAddressType()) {
+                        return;
+                    }
                     EAO.setAddressType(addressType).catch(function(error) {
                         console.warn('Endereco could not switch the address type:', error);
                     });
-                })
+                };
+                document.querySelector('select#kLieferadresse').addEventListener('change', applyDeliveryAddressType);
+                // A Packstation/Postfiliale can already be preselected when the page loads.
+                applyDeliveryAddressType();
             }
         }
     ).then(function(EAO) {
