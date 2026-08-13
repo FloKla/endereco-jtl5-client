@@ -1,30 +1,30 @@
 <form class="endereco-fake-addresses" action="#" method="post">
     <div style="display: none !important">
-        <input id="endereco_billing_countrycode" type="text" value="{$endereco_billing_countrycode}">
+        <input id="endereco_billing_countrycode" type="text" value="{$endereco_billing_countrycode|escape:'html'}">
         {if $endereco_billing_has_subdivision}
-            <input id="endereco_billing_subdivision_code" type="text" value="{$endereco_billing_subdivision_code}" data-endereco-subdivision-active="true">
+            <input id="endereco_billing_subdivision_code" type="text" value="{$endereco_billing_subdivision_code|escape:'html'}" data-endereco-subdivision-active="true">
         {/if}
-        <input id="endereco_billing_postal_code" type="text" value="{$endereco_billing_postal_code}">
-        <input id="endereco_billing_locality" type="text" value="{$endereco_billing_locality}">
-        <input id="endereco_billing_street_name" type="text" value="{$endereco_billing_street_name}">
-        <input id="endereco_billing_building_number" type="text" value="{$endereco_billing_building_number}">
+        <input id="endereco_billing_postal_code" type="text" value="{$endereco_billing_postal_code|escape:'html'}">
+        <input id="endereco_billing_locality" type="text" value="{$endereco_billing_locality|escape:'html'}">
+        <input id="endereco_billing_street_name" type="text" value="{$endereco_billing_street_name|escape:'html'}">
+        <input id="endereco_billing_building_number" type="text" value="{$endereco_billing_building_number|escape:'html'}">
         {if $endereco_billing_has_addinfo}
-            <input id="endereco_billing_addinfo" type="text" value="{$endereco_billing_addinfo}">
+            <input id="endereco_billing_addinfo" type="text" value="{$endereco_billing_addinfo|escape:'html'}">
         {/if}
 
-        <input id="endereco_billing_ts" type="text" value="{$endereco_billing_ts}">
+        <input id="endereco_billing_ts" type="text" value="{$endereco_billing_ts|escape:'html'}">
         <input id="endereco_billing_status" type="text" value="{$endereco_billing_status|escape:'html'}">
         <input id="endereco_billing_predictions" type="text" value="{$endereco_billing_predictions|escape:'html'}">
 
         <input
                 id="endereco_billing_address"
                 data-customer-id="{$Kunde->kKunde}"
-                data-country-code="{$endereco_billing_countrycode}"
-                data-postal-code="{$endereco_billing_postal_code}"
-                data-locality="{$endereco_billing_locality}"
-                data-street-name="{$endereco_billing_street_name}"
-                data-building-number="{$endereco_billing_building_number}"
-                data-additional-info="{$endereco_billing_addinfo}"
+                data-country-code="{$endereco_billing_countrycode|escape:'html'}"
+                data-postal-code="{$endereco_billing_postal_code|escape:'html'}"
+                data-locality="{$endereco_billing_locality|escape:'html'}"
+                data-street-name="{$endereco_billing_street_name|escape:'html'}"
+                data-building-number="{$endereco_billing_building_number|escape:'html'}"
+                data-additional-info="{$endereco_billing_addinfo|escape:'html'}"
                 data-copy-shipping="{if !$endereco_shipping_address_is_different}true{else}false{/if}"
         >
     </div>

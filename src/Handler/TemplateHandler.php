@@ -437,13 +437,16 @@ class TemplateHandler
             ? $this->enderecoService->resolveSubdivisionCode($state, $countryCode)
             : '';
 
-        // Set smarty values for billing.
-        $smarty->assign('endereco_billing_countrycode', $countryCode)
-            ->assign('endereco_billing_postal_code', $postalCode)
-            ->assign('endereco_billing_locality', $locality)
-            ->assign('endereco_billing_street_name', $streetName)
-            ->assign('endereco_billing_building_number', $buildingNumber)
-            ->assign('endereco_billing_addinfo', $additionalInfo)
+        // Session values arrive HTML-entity-encoded on most core paths but raw on
+        // others ($htmlentities = false call sites). Decoding here and escaping in
+        // the template produces identical DOM values either way and matches the
+        // html_entity_decode() treatment of the server-side API payload builder.
+        $smarty->assign('endereco_billing_countrycode', html_entity_decode($countryCode))
+            ->assign('endereco_billing_postal_code', html_entity_decode($postalCode))
+            ->assign('endereco_billing_locality', html_entity_decode($locality))
+            ->assign('endereco_billing_street_name', html_entity_decode($streetName))
+            ->assign('endereco_billing_building_number', html_entity_decode($buildingNumber))
+            ->assign('endereco_billing_addinfo', html_entity_decode($additionalInfo))
             ->assign('endereco_billing_has_addinfo', $this->enderecoService->isAdditionalInfoFieldEnabled(false))
             ->assign('endereco_billing_has_subdivision', $hasSubdivision)
             ->assign('endereco_billing_subdivision_code', $subdivisionCode)
@@ -513,13 +516,13 @@ class TemplateHandler
             ? $this->enderecoService->resolveSubdivisionCode($state, $countryCode)
             : '';
 
-        // Set smarty values for shipping.
-        $smarty->assign('endereco_shipping_countrycode', $countryCode)
-            ->assign('endereco_shipping_postal_code', $postalCode)
-            ->assign('endereco_shipping_locality', $locality)
-            ->assign('endereco_shipping_street_name', $streetName)
-            ->assign('endereco_shipping_building_number', $buildingNumber)
-            ->assign('endereco_shipping_addinfo', $additionalInfo)
+        // See addBillingAddressToConfirmationPage() for the decode-then-escape rules.
+        $smarty->assign('endereco_shipping_countrycode', html_entity_decode($countryCode))
+            ->assign('endereco_shipping_postal_code', html_entity_decode($postalCode))
+            ->assign('endereco_shipping_locality', html_entity_decode($locality))
+            ->assign('endereco_shipping_street_name', html_entity_decode($streetName))
+            ->assign('endereco_shipping_building_number', html_entity_decode($buildingNumber))
+            ->assign('endereco_shipping_addinfo', html_entity_decode($additionalInfo))
             ->assign('endereco_shipping_has_addinfo', $this->enderecoService->isAdditionalInfoFieldEnabled(true))
             ->assign('endereco_shipping_has_subdivision', $hasSubdivision)
             ->assign('endereco_shipping_subdivision_code', $subdivisionCode)

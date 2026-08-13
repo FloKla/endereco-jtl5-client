@@ -1,30 +1,30 @@
 <form class="endereco-fake-addresses" action="#" method="post">
     <div style="display: none !important">
-        <input id="endereco_shipping_countrycode" type="text" value="{$endereco_shipping_countrycode}">
+        <input id="endereco_shipping_countrycode" type="text" value="{$endereco_shipping_countrycode|escape:'html'}">
         {if $endereco_shipping_has_subdivision}
-            <input id="endereco_shipping_subdivision_code" type="text" value="{$endereco_shipping_subdivision_code}" data-endereco-subdivision-active="true">
+            <input id="endereco_shipping_subdivision_code" type="text" value="{$endereco_shipping_subdivision_code|escape:'html'}" data-endereco-subdivision-active="true">
         {/if}
-        <input id="endereco_shipping_postal_code" type="text" value="{$endereco_shipping_postal_code}">
-        <input id="endereco_shipping_locality" type="text" value="{$endereco_shipping_locality}">
-        <input id="endereco_shipping_street_name" type="text" value="{$endereco_shipping_street_name}">
-        <input id="endereco_shipping_building_number" type="text" value="{$endereco_shipping_building_number}">
+        <input id="endereco_shipping_postal_code" type="text" value="{$endereco_shipping_postal_code|escape:'html'}">
+        <input id="endereco_shipping_locality" type="text" value="{$endereco_shipping_locality|escape:'html'}">
+        <input id="endereco_shipping_street_name" type="text" value="{$endereco_shipping_street_name|escape:'html'}">
+        <input id="endereco_shipping_building_number" type="text" value="{$endereco_shipping_building_number|escape:'html'}">
         {if $endereco_shipping_has_addinfo}
-            <input id="endereco_shipping_addinfo" type="text" value="{$endereco_shipping_addinfo}">
+            <input id="endereco_shipping_addinfo" type="text" value="{$endereco_shipping_addinfo|escape:'html'}">
         {/if}
 
-        <input id="endereco_shipping_ts" type="text" value="{$endereco_shipping_ts}">
+        <input id="endereco_shipping_ts" type="text" value="{$endereco_shipping_ts|escape:'html'}">
         <input id="endereco_shipping_status" type="text" value="{$endereco_shipping_status|escape:'html'}">
         <input id="endereco_shipping_predictions" type="text" value="{$endereco_shipping_predictions|escape:'html'}">
 
         <input
                 id="endereco_shipping_address"
                 data-customer-id="{$Kunde->kKunde}"
-                data-country-code="{$endereco_shipping_countrycode}"
-                data-postal-code="{$endereco_shipping_postal_code}"
-                data-locality="{$endereco_shipping_locality}"
-                data-street-name="{$endereco_shipping_street_name}"
-                data-building-number="{$endereco_shipping_building_number}"
-                data-additional-info="{$endereco_shipping_addinfo}"
+                data-country-code="{$endereco_shipping_countrycode|escape:'html'}"
+                data-postal-code="{$endereco_shipping_postal_code|escape:'html'}"
+                data-locality="{$endereco_shipping_locality|escape:'html'}"
+                data-street-name="{$endereco_shipping_street_name|escape:'html'}"
+                data-building-number="{$endereco_shipping_building_number|escape:'html'}"
+                data-additional-info="{$endereco_shipping_addinfo|escape:'html'}"
         >
     </div>
 
