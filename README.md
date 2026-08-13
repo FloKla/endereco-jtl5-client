@@ -1,7 +1,7 @@
 ![HERO](docs/readmeheader.png)
 # Internationale Adressprüfung von Endereco für JTL 5 Shops
 
-Kompatibel mit JTL Shop ab Version 5. Kompatibel mit Nova Template.
+Kompatibel mit JTL Shop 5.3 bis 5.7. Kompatibel mit Nova Template.
 
 Das Plugin von Endereco prüft Kundenadressen in Echtzeit während sie diese im Bestellprozess eingeben. Falls die Adressen korrekturbedürftig sind, werden Fehler und 
 Korrekturvorschläge angezeigt, sodass der Kunde zeitnah die Adressfehler beseitigen kann. Das reduziert in Folge den manuellen Aufwand im Lager, da die Adressen geprüft und leitcodefähig sind.

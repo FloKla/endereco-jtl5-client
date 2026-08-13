@@ -21,8 +21,6 @@
         "phpcs": "phpcs --standard=PSR12 --ignore=vendor/ --ignore=node_modules/ ./src ./Bootstrap.php",
         "phpstan": [
             "bash fetch_shops.sh",
-            "phpstan analyse -c phpstan.jtl-shop-5.1.8.neon --memory-limit=1G",
-            "phpstan analyse -c phpstan.jtl-shop-5.2.7.neon --memory-limit=1G",
             "phpstan analyse -c phpstan.jtl-shop-5.3.4.neon --memory-limit=1G",
             "phpstan analyse -c phpstan.jtl-shop-5.4.1.neon --memory-limit=1G",
             "phpstan analyse -c phpstan.jtl-shop-5.5.3.neon --memory-limit=1G",

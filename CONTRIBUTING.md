@@ -16,7 +16,7 @@ Every commit must meet these requirements:
 1. **Stable State**: Each commit should leave the codebase in a working, stable state
 2. **Quality Assurance**: Run `composer run qa` - it must pass without errors
 3. **Installation Tests**: The plugin must be installable and uninstallable with every commit
-4. **JTL-Shop Version Compatibility**: Ensure compatibility across supported JTL-Shop 5.x versions, starting with 5.1.* (e.g. 5.1.8, 5.2.7, 5.3.4, 5.4.1, 5.5.3, 5.6.2, 5.7.2 and so on). We always test the latest patch.
+4. **JTL-Shop Version Compatibility**: Ensure compatibility across supported JTL-Shop 5.x versions, starting with 5.3.* (e.g. 5.3.4, 5.4.1, 5.5.3, 5.6.2, 5.7.2 and so on). We always test the latest patch.
 5. **Don't break**: The existing functionality should not break 
 
 ## Commit Message Guidelines
@@ -83,12 +83,12 @@ findings documented in DEV-789.
 ## JTL-Shop Version Considerations
 
 **PHP Compatibility:**
-- Support multiple PHP versions as tested in `test_php_versions.sh`
-- Ensure compatibility with PHP 7.4+ (check minimum requirements for your target JTL-Shop version)
+- Support PHP 8.1 to 8.5 as tested in `test_php_versions.sh`
+- Test at valid JTL/PHP intersections (e.g. JTL 5.3 supports PHP 8.1, JTL 5.7 adds PHP 8.5 and drops PHP 8.2)
 - Test with all supported PHP versions
 
 **JTL-Shop Version Support:**
-- Test with latest patch versions of each feature release of JTL-Shop starting with 5.1.*
+- Test with latest patch versions of each feature release of JTL-Shop starting with 5.3.*
 - Use appropriate PHPStan configuration files for each version
 - Ensure plugin works across all supported JTL-Shop versions
 
@@ -100,7 +100,7 @@ Before submitting your PR:
 2. ✅ `composer run qa` passes without errors
 3. ✅ Plugin installs and uninstalls successfully
 4. ✅ Feature branch created from `master` branch
-5. ✅ JTL-Shop version compatibility tested (5.1.* - 5.7.*)
+5. ✅ JTL-Shop version compatibility tested (5.3.* - 5.7.*)
 6. ✅ PHP version compatibility verified using `test_php_versions.sh`
 
 ## Quality Checklist
