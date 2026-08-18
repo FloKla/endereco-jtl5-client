@@ -1,7 +1,10 @@
 import Promise from 'promise-polyfill';
 import merge from 'lodash.merge';
+import axios from 'axios';
 import EnderecoIntegrator from './node_modules/@endereco/js-sdk/modules/integrator';
 import css from './endereco.scss';
+
+axios.defaults.headers.common['X-Endereco-Token'] = window.EnderecoIntegrator.enderecoToken;
 
 if ('NodeList' in window && !NodeList.prototype.forEach) {
     NodeList.prototype.forEach = function (callback, thisArg) {

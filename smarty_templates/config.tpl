@@ -3,6 +3,7 @@
     if (undefined === window.EnderecoIntegrator) {
         window.EnderecoIntegrator = {};
     }
+    window.EnderecoIntegrator.enderecoToken = {/literal}{$endereco_token nofilter}{literal};
     if (!window.EnderecoIntegrator.onLoad) {
         window.EnderecoIntegrator.onLoad = [];
     }
@@ -72,16 +73,9 @@
     }
     function enderecoLoadAMSConfig() {
         {/literal}
-        if (!('{$endereco_plugin_config->getValue('endereco_jtl5_client_api_key')}')) {
-            console.log('No API Key specified. Abort.');
-            return;
-        }
         window.EnderecoIntegrator.themeName = '{$endereco_theme_name}';
         window.EnderecoIntegrator.defaultCountrySelect = false;
-        window.EnderecoIntegrator.config.apiUrl = '{$endereco_api_url}';
-        window.EnderecoIntegrator.config.apiKey = '{$endereco_plugin_config->getValue('endereco_jtl5_client_api_key')}';
-        window.EnderecoIntegrator.config.remoteApiUrl = '{$endereco_plugin_config->getValue('endereco_jtl5_client_remote_url')}';
-        window.EnderecoIntegrator.config.agentName = '{$endereco_agent_info}';
+        window.EnderecoIntegrator.config.apiUrl = {$endereco_api_url nofilter};
         window.EnderecoIntegrator.config.showDebugInfo = ('on' === '{$endereco_plugin_config->getValue('endereco_jtl5_client_show_debug_info')}');
         window.EnderecoIntegrator.config.trigger.onblur = ('on' === '{$endereco_plugin_config->getValue('endereco_jtl5_client_onblur_trigger')}');
         window.EnderecoIntegrator.config.trigger.onsubmit = ('on' === '{$endereco_plugin_config->getValue('endereco_jtl5_client_onsubmit_trigger')}');

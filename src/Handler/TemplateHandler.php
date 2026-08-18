@@ -13,6 +13,9 @@ use JTL\Template\TemplateServiceInterface;
 use JTL\DB\DbInterface;
 use Illuminate\Support\Collection;
 use JTL\Alert\Alert;
+use JTL\Helpers\Form;
+use JTL\Shop;
+use Plugin\endereco_jtl5_client\src\BrowserRpc\BrowserRpcEndpoint;
 use Plugin\endereco_jtl5_client\src\Structures\AddressMeta;
 
 class TemplateHandler
@@ -360,9 +363,15 @@ class TemplateHandler
             }
         }
 
-        $pluginIOPath = URL_SHOP . '/plugins/endereco_jtl5_client/io.php';
+        if (!isset($_SESSION['jtl_token'])) {
+            Form::getTokenInput();
+        }
+        $token = $_SESSION['jtl_token'] ?? null;
+        if (!is_string($token) || $token === '') {
+            return;
+        }
 
-        $agentInfo = "Endereco JTL5 Client v" . $this->plugin->getMeta()->getVersion();
+        $browserRpcUrl = rtrim(Shop::getURL(), '/') . BrowserRpcRouteHandler::ROUTE_SLUG;
 
         $countryMappingJSON = json_encode($countryMapping);
         if (!$countryMappingJSON) {
@@ -373,8 +382,8 @@ class TemplateHandler
             ->assign('endereco_plugin_config', $this->plugin->getConfig())
             ->assign('endereco_locales', $this->plugin->getLocalization())
             ->assign('endereco_plugin_ver', $this->plugin->getMeta()->getVersion())
-            ->assign('endereco_agent_info', $agentInfo)
-            ->assign('endereco_api_url', $pluginIOPath)
+            ->assign('endereco_api_url', json_encode($browserRpcUrl, JSON_THROW_ON_ERROR))
+            ->assign('endereco_token', json_encode($token, JSON_THROW_ON_ERROR))
             ->assign(
                 'endereco_jtl5_client_country_mapping',
                 str_replace('\'', '\\\'', $countryMappingJSON)
@@ -549,6 +558,10 @@ class TemplateHandler
      */
     public function generalTemplateIntegration(array $args): void
     {
+        if (!$this->isBrowserRpcConfigurationValid()) {
+            return;
+        }
+
         // Set variables.
         $smarty = $args['smarty'];
         $document = $args['document'];
@@ -651,6 +664,10 @@ class TemplateHandler
      */
     public function addSpecialPayPalCheckoutListener(array $args)
     {
+        if (!$this->isBrowserRpcConfigurationValid()) {
+            return;
+        }
+
         // Set variables.
         $smarty = $args['smarty'];
         $document = $args['document'];
@@ -663,6 +680,23 @@ class TemplateHandler
             $document,
             $smarty
         );
+    }
+
+    /**
+     * @return array{apiKey: mixed, remoteUrl: mixed, agent: string}
+     */
+    private function getBrowserRpcConfiguration(): array
+    {
+        return [
+            'apiKey' => $this->plugin->getConfig()->getValue('endereco_jtl5_client_api_key'),
+            'remoteUrl' => $this->plugin->getConfig()->getValue('endereco_jtl5_client_remote_url'),
+            'agent' => 'Endereco JTL5 Client v' . $this->plugin->getMeta()->getVersion(),
+        ];
+    }
+
+    private function isBrowserRpcConfigurationValid(): bool
+    {
+        return BrowserRpcEndpoint::isConfigurationValid($this->getBrowserRpcConfiguration());
     }
 
     /**
