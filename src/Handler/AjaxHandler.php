@@ -5,6 +5,7 @@ namespace Plugin\endereco_jtl5_client\src\Handler;
 use JTL\Checkout\Lieferadresse;
 use JTL\Customer\Customer;
 use JTL\Customer\DataHistory;
+use JTL\Helpers\Form;
 use JTL\Helpers\Text;
 use JTL\DB\NiceDB;
 use JTL\DB\DbInterface;
@@ -73,12 +74,17 @@ class AjaxHandler
      */
     public function updateBillingAddress($params): void
     {
-        $customerExistsInDB = !empty($params['customerId']);
-        $copyToShipping = strtolower($params['copyShippingToo']) === 'true';
+        // The posted customerId is never used to pick the persistence target. It
+        // is browser-supplied, so trusting it let any logged-in customer rewrite
+        // another customer's billing address. The session is the only authority.
+        $sessionCustomerId  = $this->getSessionCustomerId();
+        $customerExistsInDB = $sessionCustomerId > 0;
+        $copyToShipping     = isset($params['copyShippingToo'])
+            && 'true' === strtolower((string)$params['copyShippingToo']);
 
-        // Load customer or create a new customer object.
+        // Load customer or fall back to the session-only guest object.
         if ($customerExistsInDB) {
-            $customer = new Customer($params['customerId']);
+            $customer = new Customer($sessionCustomerId);
         } else {
             $customer = $_SESSION['Kunde'] ?? null;
         }
@@ -87,34 +93,33 @@ class AjaxHandler
             $customer = $this->updateAddressData($customer, $params['updatedAddress']);
         }
 
-        $addressMeta = (new AddressMeta())->assign(
-            $params['enderecometa']['ts'],
-            $params['enderecometa']['status'],
-            $params['enderecometa']['predictions']
-        );
+        $addressMeta = $this->buildAddressMeta($params);
 
         // Update customer in the database
         if ($customerExistsInDB) {
             $this->enderecoService->updateAddressInDB($customer);
-            $this->enderecoService->updateAddressMetaInDB(
-                $customer,
-                $addressMeta
-            );
+            if ($addressMeta !== null) {
+                $this->enderecoService->updateAddressMetaInDB(
+                    $customer,
+                    $addressMeta
+                );
+            }
         }
 
         // Update customer in the session
         $this->enderecoService->updateAddressInSession($customer);
-        $this->enderecoService->updateAddressMetaInSession(
-            'EnderecoBillingAddressMeta',
-            $addressMeta
-        );
 
-        $addressData = $this->extractAddressData($params);
+        if ($addressMeta !== null) {
+            $this->enderecoService->updateAddressMetaInSession(
+                'EnderecoBillingAddressMeta',
+                $addressMeta
+            );
 
-        $this->enderecoService->updateAddressMetaInCache(
-            $addressData,
-            $addressMeta
-        );
+            $this->enderecoService->updateAddressMetaInCache(
+                $this->extractAddressData($params),
+                $addressMeta
+            );
+        }
 
         if ($copyToShipping) {
             $this->updateShippingAddress($params);
@@ -146,14 +151,11 @@ class AjaxHandler
             return;
         }
 
-        $isPresetKnown = !empty($_SESSION['shippingAddressPresetID']);
+        $sessionCustomerId = $this->getSessionCustomerId();
+        $isPresetKnown     = !empty($_SESSION['shippingAddressPresetID']);
 
         $deliveryAddress = $this->updateAddressData($_SESSION['Lieferadresse'], $params['updatedAddress']);
-        $addressMeta = (new AddressMeta())->assign(
-            $params['enderecometa']['ts'],
-            $params['enderecometa']['status'],
-            $params['enderecometa']['predictions']
-        );
+        $addressMeta     = $this->buildAddressMeta($params);
 
         if ($isPresetKnown && class_exists('JTL\Checkout\DeliveryAddressTemplate')) {
             $presetAddress = new \JTL\Checkout\DeliveryAddressTemplate(
@@ -161,17 +163,29 @@ class AjaxHandler
                 $_SESSION['shippingAddressPresetID']
             );
 
-            if (!empty($presetAddress->kLieferadresse)) {
+            // The session preset ID is not trustworthy: JTL writes the posted
+            // kLieferadresse into the session before its own ownership check and
+            // leaves a foreign value there when that check fails, while
+            // DeliveryAddressTemplate::load() queries without a kKunde filter.
+            // Prove the preset belongs to the session customer before writing.
+            // Declared int in 5.3/5.4 and ?int from 5.5 on, so cast without a
+            // null coalesce: the property always exists, it is only sometimes null.
+            $presetOwnerId = (int)$presetAddress->kKunde;
+            $isPresetOwned = $presetOwnerId > 0 && $presetOwnerId === $sessionCustomerId;
+
+            if (!empty($presetAddress->kLieferadresse) && $isPresetOwned) {
                 $presetAddress = $this->updateAddressData($presetAddress, $params['updatedAddress']);
                 $this->enderecoService->updateAddressInDB($presetAddress);
-                $this->enderecoService->updateAddressMetaInDB(
-                    $presetAddress,
-                    $addressMeta
-                );
+                if ($addressMeta !== null) {
+                    $this->enderecoService->updateAddressMetaInDB(
+                        $presetAddress,
+                        $addressMeta
+                    );
+                }
             }
         }
 
-        if (!empty($_SESSION['Lieferadresse']->kLieferadresse)) {
+        if ($addressMeta !== null && !empty($_SESSION['Lieferadresse']->kLieferadresse)) {
             $this->enderecoService->updateAddressMetaInDB(
                 $_SESSION['Lieferadresse'],
                 $addressMeta
@@ -180,19 +194,107 @@ class AjaxHandler
 
         // Update delivery address in the session
         $this->enderecoService->updateAddressInSession($deliveryAddress);
-        $this->enderecoService->updateAddressMetaInSession(
-            'EnderecoShippingAddressMeta',
-            $addressMeta
-        );
 
-        $addressData = $this->extractAddressData($params);
+        if ($addressMeta !== null) {
+            $this->enderecoService->updateAddressMetaInSession(
+                'EnderecoShippingAddressMeta',
+                $addressMeta
+            );
 
-        $this->enderecoService->updateAddressMetaInCache(
-            $addressData,
-            $addressMeta
-        );
+            $this->enderecoService->updateAddressMetaInCache(
+                $this->extractAddressData($params),
+                $addressMeta
+            );
+        }
 
         return;
+    }
+
+    /**
+     * Resolves the customer the current session is authenticated as.
+     *
+     * Guest checkout puts an unsaved Customer into the session, whose kKunde stays
+     * at 0. Callers use that to tell the database path from the session-only path.
+     *
+     * @return int The session customer id, or 0 when no persisted customer exists.
+     */
+    private function getSessionCustomerId(): int
+    {
+        return (int)($_SESSION['Kunde']->kKunde ?? 0);
+    }
+
+    /**
+     * Builds the address metadata, or returns null when it cannot be built safely.
+     *
+     * AddressMeta::getTimestamp() is typed int and JTL's IO dispatcher only catches
+     * Exception, not Error. A missing or non-numeric timestamp would therefore
+     * surface as an HTTP 500 rather than a skipped metadata write.
+     *
+     * @param array<mixed,mixed> $params The request parameters.
+     *
+     * @return AddressMeta|null The metadata, or null when it must be skipped.
+     */
+    private function buildAddressMeta($params): ?AddressMeta
+    {
+        $meta = $params['enderecometa'] ?? null;
+
+        if (!is_array($meta) || !isset($meta['ts']) || !is_numeric($meta['ts'])) {
+            return null;
+        }
+
+        return (new AddressMeta())->assign(
+            (int)$meta['ts'],
+            $meta['status'] ?? null,
+            $meta['predictions'] ?? null
+        );
+    }
+
+    /**
+     * Checks whether the request payload is shaped well enough to be processed.
+     *
+     * This is deliberately narrow. Individual address fields stay the concern of
+     * EnderecoService, which already type-guards them; this only rejects payloads
+     * whose shape would crash the update methods.
+     *
+     * @param array<mixed,mixed> $params The request parameters.
+     *
+     * @return bool True when the payload may be processed.
+     */
+    private function hasProcessablePayload(array $params): bool
+    {
+        if (empty($params['updatedAddress']) || !is_array($params['updatedAddress'])) {
+            return false;
+        }
+
+        if (isset($params['copyShippingToo']) && !is_scalar($params['copyShippingToo'])) {
+            return false;
+        }
+
+        if (isset($params['enderecometa']) && !is_array($params['enderecometa'])) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Records that a request was refused, without registering any method.
+     *
+     * Only the reason class is logged. Payload contents, the request token, address
+     * data and customer identifiers are deliberately never written, because a
+     * rejection is invisible to the customer and this log is the only way a silent
+     * failure in the field becomes discoverable at all.
+     *
+     * @param string $reason One of 'token', 'method' or 'payload'.
+     *
+     * @return void
+     */
+    private function refuseRequest(string $reason): void
+    {
+        $this->enderecoService->plugin->getLogger()->notice(
+            'Endereco address update refused',
+            ['reason' => $reason]
+        );
     }
 
     /**
@@ -251,16 +353,49 @@ class AjaxHandler
             return;
         }
 
+        // The request token travels as a header: the body is JSON, so
+        // Form::validateToken()'s own $_POST and $_GET fallbacks cannot see it and
+        // the value has to be handed over explicitly. The browser already sends
+        // this header on every request through the shared Axios instance.
+        if (!Form::validateToken($_SERVER['HTTP_X_ENDERECO_TOKEN'] ?? null)) {
+            $this->refuseRequest('token');
+
+            return;
+        }
+
         $inputContent = file_get_contents('php://input');
         // Check if $inputContent is a valid string
         if ($inputContent === false) {
-            // Handle the error or return early
+            $this->refuseRequest('payload');
+
             return;
         }
 
         $postData = json_decode($inputContent, true);
-        if ($postData === null) {
-            // json_decode failed, handle the error or return early
+        if (!is_array($postData)) {
+            // json_decode failed or the body was not an object
+            $this->refuseRequest('payload');
+
+            return;
+        }
+
+        // Only the plugin's own update methods may be registered at the IO
+        // dispatcher; every other requested method name is ignored.
+        $allowedMethods = ['updateBillingAddress', 'updateShippingAddress'];
+        if (
+            !isset($postData['method']) ||
+            !is_string($postData['method']) ||
+            !in_array($postData['method'], $allowedMethods, true)
+        ) {
+            $this->refuseRequest('method');
+
+            return;
+        }
+
+        $params = $postData['params'] ?? [];
+        if (!is_array($params) || !$this->hasProcessablePayload($params)) {
+            $this->refuseRequest('payload');
+
             return;
         }
 
@@ -268,7 +403,7 @@ class AjaxHandler
         $args['request'] = json_encode([
             'name' => $postData['method'],
             'params' => [
-                'params' => $postData['params']
+                'params' => $params
             ]
         ]);
 
