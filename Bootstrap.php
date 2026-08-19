@@ -10,9 +10,14 @@ use JTL\Services\JTL\AlertServiceInterface;
 use JTL\Services\JTL\CryptoServiceInterface;
 use JTL\Shop;
 use JTL\Events\Dispatcher;
+use JTL\Router\Router;
 use JTL\Template\TemplateServiceInterface;
+use Plugin\endereco_jtl5_client\src\BrowserRpc\BrowserRpcEndpoint;
+use Plugin\endereco_jtl5_client\src\BrowserRpc\CurlEnderecoTransport;
+use Plugin\endereco_jtl5_client\src\BrowserRpc\JtlBrowserSessionAdmission;
 use Plugin\endereco_jtl5_client\src\Handler\AjaxHandler;
 use Plugin\endereco_jtl5_client\src\Handler\AttributeHandler;
+use Plugin\endereco_jtl5_client\src\Handler\BrowserRpcRouteHandler;
 use Plugin\endereco_jtl5_client\src\Handler\CommentHandler;
 use Plugin\endereco_jtl5_client\src\Handler\TemplateHandler;
 use Plugin\endereco_jtl5_client\src\Handler\MetaHandler;
@@ -95,6 +100,28 @@ class Bootstrap extends Bootstrapper
         $commentHandler = new CommentHandler(
             $plugin,
             $enderecoService
+        );
+
+        $browserRpcRouteHandler = new BrowserRpcRouteHandler(
+            $plugin,
+            new BrowserRpcEndpoint(
+                new JtlBrowserSessionAdmission(),
+                new CurlEnderecoTransport()
+            )
+        );
+
+        $dispatcher->listen(
+            'shop.hook.' . \HOOK_ROUTER_PRE_DISPATCH,
+            static function (array $args) use ($browserRpcRouteHandler): void {
+                /** @var Router $router */
+                $router = $args['router'];
+                $router->addRoute(
+                    BrowserRpcRouteHandler::ROUTE_SLUG,
+                    [$browserRpcRouteHandler, 'handle'],
+                    BrowserRpcRouteHandler::ROUTE_NAME,
+                    ['POST']
+                );
+            }
         );
 
         // Extend the templates with necessary template extensions.

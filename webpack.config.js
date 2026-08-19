@@ -1,5 +1,8 @@
 var path = require('path');
 var TerserPlugin = require('terser-webpack-plugin');
+var sdkDirectory = path.dirname(require.resolve('@endereco/js-sdk/package.json'));
+// Resolve Axios from the SDK so every SDK import receives the token-bearing instance.
+var axiosDirectory = path.dirname(require.resolve('axios/package.json', {paths: [sdkDirectory]}));
 
 module.exports = {
   mode: process.env.NODE_ENV,
@@ -10,6 +13,11 @@ module.exports = {
     path: path.resolve(__dirname, './frontend/js/'),
     publicPath: '/',
     filename: 'endereco.min.js'
+  },
+  resolve: {
+    alias: {
+      'axios$': axiosDirectory
+    }
   },
   optimization: {
     minimize: true,
