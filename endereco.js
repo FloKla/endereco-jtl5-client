@@ -16,26 +16,14 @@ if (!window.Promise) {
     window.Promise = Promise;
 }
 
-EnderecoIntegrator.postfix = {
-    ams: {
-        countryCode: 'land',
-        postalCode: 'plz',
-        locality: 'ort',
-        streetFull: '',
-        streetName: 'strasse',
-        buildingNumber: 'hausnummer',
-        addressStatus: 'enderecoamsstatus',
-        addressTimestamp: 'enderecoamsts',
-        addressPredictions: 'enderecoamspredictions',
-        additionalInfo: 'adresszusatz',
-    },
-    personServices: {
-        salutation: 'anrede',
-        firstName: 'vorname'
-    },
-    emailServices: {
-        email: 'email'
-    }
+// AMS selectors are supplied explicitly by the initiation templates. Person and
+// email services still resolve their fields through these postfix maps.
+EnderecoIntegrator.postfix.personServices = {
+    salutation: 'anrede',
+    firstName: 'vorname'
+};
+EnderecoIntegrator.postfix.emailServices = {
+    email: 'email'
 };
 
 EnderecoIntegrator.css = css[0][1];
@@ -68,6 +56,9 @@ EnderecoIntegrator.resolvers.salutationRead = function(value) {
     });
 }
 
+// Registered for forward compatibility. SDK 1.14.3 declares this filter list but
+// does not consume it yet; the actual reset happens in the kLieferadresse
+// listener in config.tpl.
 EnderecoIntegrator.amsFilters.isAddressMetaStillRelevant.push((isStillRelevant, EAO) => {
     // The rest of the logic is only valid for shipping addresses.
     if (EAO.addressType !== 'shipping_address') {
@@ -87,6 +78,220 @@ EnderecoIntegrator.amsFilters.isAddressMetaStillRelevant.push((isStillRelevant, 
 
     return isStillRelevant;
 });
+
+// Replaces the former endereco-blur listener from config.tpl: the SDK calls this
+// hook for every DOM element it binds. NOVA validates and floats labels on
+// focus/change/blur, which the SDK's programmatic writes do not trigger.
+EnderecoIntegrator.prepareDOMElement = function(DOMElement, addressObject) {
+    if (!DOMElement || !DOMElement.dataset) {
+        return;
+    }
+    if ('true' === DOMElement.dataset.enderecoNovaAdapter) {
+        return;
+    }
+    DOMElement.dataset.enderecoNovaAdapter = 'true';
+
+    DOMElement.addEventListener('endereco-blur', function(e) {
+        const target = e.target;
+        const dispatchNovaValidationEvents = function() {
+            const previouslyFocused = document.activeElement;
+            ['focus', 'change', 'blur'].forEach(function(eventName) {
+                target.dispatchEvent(new CustomEvent(eventName, { bubbles: true, cancelable: true }));
+            });
+            if (
+                previouslyFocused &&
+                previouslyFocused !== document.activeElement &&
+                document.contains(previouslyFocused) &&
+                'function' === typeof previouslyFocused.focus
+            ) {
+                previouslyFocused.focus();
+            }
+        };
+
+        if (addressObject && 'function' === typeof addressObject.waitForPredictionApplication) {
+            addressObject.waitForPredictionApplication()
+                .then(dispatchNovaValidationEvents)
+                .catch(dispatchNovaValidationEvents);
+        } else {
+            dispatchNovaValidationEvents();
+        }
+    });
+};
+
+// The SDK's default check expects a populated subdivisionMappingReverse, which the
+// JTL integration does not maintain: JTL state selects already carry ISO-3166-2
+// codes. A select therefore counts as active when it offers such codes for the
+// current country; NOVA's free-text fallback (country without configured states)
+// counts as inactive so subdivisionCode is omitted from requests.
+const sdkHasActiveSubscriber = EnderecoIntegrator.hasActiveSubscriber;
+const ISO_3166_2_PATTERN = /^[A-Z]{2}-[A-Z0-9]{1,3}$/i;
+EnderecoIntegrator.hasActiveSubscriber = function(fieldName, DOMElement, dataObject) {
+    if ('subdivisionCode' !== fieldName) {
+        return sdkHasActiveSubscriber(fieldName, DOMElement, dataObject);
+    }
+
+    if (DOMElement && DOMElement.dataset && 'true' === DOMElement.dataset.enderecoSubdivisionActive) {
+        return true;
+    }
+
+    if (DOMElement && 'SELECT' === DOMElement.tagName) {
+        const countryCode = (dataObject && dataObject.countryCode)
+            ? String(dataObject.countryCode).toUpperCase()
+            : '';
+        return Array.from(DOMElement.options).some(function(option) {
+            if (!option.value || option.disabled || !ISO_3166_2_PATTERN.test(option.value)) {
+                return false;
+            }
+            return !countryCode || option.value.toUpperCase().indexOf(countryCode + '-') === 0;
+        });
+    }
+
+    return false;
+};
+
+// NOVA's regionsToState() replaces the state element on country changes, which
+// disconnects the SDK subscriber. This observer rebinds a single subscriber to
+// the replacement element and keeps the address object in sync.
+EnderecoIntegrator.watchSubdivisionField = function(EAO, subdivisionSelector) {
+    if (!EAO || !subdivisionSelector) {
+        return;
+    }
+
+    let knownElement = document.querySelector(subdivisionSelector);
+    const container = knownElement ? (knownElement.closest('form') || knownElement.parentNode) : null;
+    if (!container) {
+        return;
+    }
+
+    const isBound = function(element) {
+        return (EAO._subscribers.subdivisionCode || []).some(function(subscriber) {
+            return subscriber.object === element;
+        });
+    };
+
+    const rebind = function(element) {
+        // SDK 1.14.3's removeSubscriber is a no-op, so stale subscribers have to
+        // be cleaned up and filtered out manually.
+        (EAO._subscribers.subdivisionCode || []).forEach(function(subscriber) {
+            if (subscriber.object !== element && 'function' === typeof subscriber.cleanupResources) {
+                subscriber.cleanupResources();
+            }
+        });
+        EAO._subscribers.subdivisionCode = (EAO._subscribers.subdivisionCode || []).filter(function(subscriber) {
+            return subscriber.object === element;
+        });
+        (EAO._subscribers.subdivisionCodeStatus || []).forEach(function(subscriber) {
+            if (!document.contains(subscriber.object) && 'function' === typeof subscriber.cleanupResources) {
+                subscriber.cleanupResources();
+            }
+        });
+        EAO._subscribers.subdivisionCodeStatus = (EAO._subscribers.subdivisionCodeStatus || []).filter(function(subscriber) {
+            return document.contains(subscriber.object);
+        });
+
+        if (EAO._subscribers.subdivisionCode.length === 0) {
+            // NOVA only swaps the select element, so the parent container (the SDK's
+            // status target) usually survives; autosubscribing again would add a
+            // duplicate status subscriber per replacement.
+            const hasStatusSubscriberOnParent = (EAO._subscribers.subdivisionCodeStatus || []).some(function(subscriber) {
+                return subscriber.object === element.parentNode;
+            });
+            const subscriber = new EnderecoIntegrator.constructors.EnderecoSubscriber(
+                'subdivisionCode',
+                element,
+                { autosubscribeToStatus: !hasStatusSubscriberOnParent }
+            );
+            EAO.addSubscriber(subscriber);
+        }
+
+        EnderecoIntegrator.prepareDOMElement(element, EAO);
+
+        const replacementValue = element.value || '';
+        if (replacementValue !== EAO.subdivisionCode) {
+            EAO._allowToNotifySubdivisionCodeSubscribers = false;
+            Promise.resolve(EAO.setSubdivisionCode(replacementValue)).then(function() {
+                EAO._allowToNotifySubdivisionCodeSubscribers = true;
+                if (EAO.active) {
+                    EAO.util.invalidateAddressMeta();
+                }
+            }).catch(function() {
+                EAO._allowToNotifySubdivisionCodeSubscribers = true;
+            });
+        }
+    };
+
+    const reconcile = function() {
+        const candidate = document.querySelector(subdivisionSelector);
+        if (!candidate) {
+            return;
+        }
+        if (candidate === knownElement && isBound(candidate)) {
+            return;
+        }
+        knownElement = candidate;
+        rebind(candidate);
+    };
+
+    // Covers a replacement that happened between field binding and observer start
+    // (initial asynchronous country refresh).
+    reconcile();
+
+    const observer = new MutationObserver(reconcile);
+    observer.observe(container, {
+        childList: true,
+        subtree: true
+    });
+};
+
+// Coordinates the page reload after the confirmation-page review forms persisted
+// their results: reload once, only after every pending update and SDK process
+// settled, and only if at least one update succeeded (fail-open otherwise).
+EnderecoIntegrator.jtlReviewCoordinator = {
+    pendingUpdates: 0,
+    anySuccess: false,
+    reloadTriggered: false,
+    watcherId: null,
+    beginUpdate: function() {
+        this.pendingUpdates++;
+    },
+    finishUpdate: function(wasSuccessful) {
+        this.pendingUpdates--;
+        if (wasSuccessful) {
+            this.anySuccess = true;
+        }
+        this.watchForReload();
+    },
+    watchForReload: function() {
+        const $self = this;
+        if ($self.reloadTriggered || $self.watcherId) {
+            return;
+        }
+        $self.watcherId = setInterval(function() {
+            if ($self.reloadTriggered) {
+                clearInterval($self.watcherId);
+                $self.watcherId = null;
+                return;
+            }
+            const queueBusy = window.EnderecoIntegrator.processQueue &&
+                window.EnderecoIntegrator.processQueue.size > 0;
+            const popupsOpen = window.EnderecoIntegrator.popupQueue > 0 ||
+                !!document.querySelector('[endereco-popup]');
+            if ($self.pendingUpdates > 0 || queueBusy || popupsOpen) {
+                return;
+            }
+            clearInterval($self.watcherId);
+            $self.watcherId = null;
+            if ($self.anySuccess) {
+                $self.reloadTriggered = true;
+                if (window.EnderecoIntegrator.globalSpace && window.EnderecoIntegrator.globalSpace.reloadPage) {
+                    window.EnderecoIntegrator.globalSpace.reloadPage();
+                } else {
+                    window.location.reload();
+                }
+            }
+        }, 250);
+    }
+};
 
 if (window.EnderecoIntegrator) {
     window.EnderecoIntegrator = merge(EnderecoIntegrator, window.EnderecoIntegrator);
@@ -164,12 +369,23 @@ window.EnderecoIntegrator.waitUntilReady().then( function() {
     new window.EnderecoIntegrator.TypeaheadManager();
 });
 
-var $waitForConfig = setInterval( function() {
-    if(typeof enderecoLoadAMSConfig === 'function'){
-        enderecoLoadAMSConfig();
-        clearInterval($waitForConfig);
-    }
-}, 1);
+// config.tpl is prepended to <head> while this bundle loads async/defer at the
+// end of <body>, so the config loader practically always exists already. The
+// guarded scanner only covers exotic template setups.
+if ('function' === typeof enderecoLoadAMSConfig) {
+    enderecoLoadAMSConfig();
+} else {
+    let $waitForConfigTries = 0;
+    const $waitForConfig = setInterval(function() {
+        $waitForConfigTries++;
+        if ('function' === typeof enderecoLoadAMSConfig) {
+            enderecoLoadAMSConfig();
+            clearInterval($waitForConfig);
+        } else if ($waitForConfigTries >= 200) {
+            clearInterval($waitForConfig);
+        }
+    }, 50);
+}
 
 EnderecoIntegrator.afterAMSActivation.push( function(EAO) {
     if (!!EAO.onSubmitUnblock) {

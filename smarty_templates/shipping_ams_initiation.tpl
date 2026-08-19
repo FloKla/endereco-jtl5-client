@@ -7,6 +7,7 @@
     enderecoInitAMS(
         {
             countryCode: '[name="register[shipping_address][land]"]',
+            subdivisionCode: '[name="register[shipping_address][bundesland]"]',
             postalCode: '[name="register[shipping_address][plz]"]',
             locality: '[name="register[shipping_address][ort]"]',
             streetFull: '',
@@ -18,27 +19,48 @@
             additionalInfo: '[name="register[shipping_address][adresszusatz]"]',
         },
         {
-            name: 'shipping_address',
-            addressType: 'shipping_address'
+            name: 'shipping_address_ams',
+            addressType: 'shipping_address',
+            intent: 'edit',
+            targetSelector: 'body',
+            insertPosition: 'beforeend'
         },
         function(EAO) {
+            if (!EAO) {
+                return;
+            }
             // Compatibility issue with DHL Wunschpaket.
             if (document.querySelector('select#kLieferadresse')) {
-                document.querySelector('select#kLieferadresse').addEventListener('change', function() {
-                    var $attr = document.querySelector('select#kLieferadresse').selectedOptions[0].getAttribute('data-jtlpack')
+                var applyDeliveryAddressType = function() {
+                    var $option = document.querySelector('select#kLieferadresse').selectedOptions[0];
+                    var $attr = $option ? $option.getAttribute('data-jtlpack') : null;
+                    var addressType = 'shipping_address';
                     if ('-2' === $attr) {
-                        EAO.addressType = 'packstation';
-                        EAO.street = "Packstation";
-                    } else if('-3' === $attr) {
-                        EAO.addressType = 'postoffice';
-                        EAO.street = "Postfiliale";
-                    } else {
-                        EAO.addressType = 'shipping_address';
+                        addressType = 'packstation';
+                    } else if ('-3' === $attr) {
+                        addressType = 'postoffice';
                     }
-                })
+                    if (addressType === EAO.getAddressType()) {
+                        return;
+                    }
+                    EAO.setAddressType(addressType).catch(function(error) {
+                        console.warn('Endereco could not switch the address type:', error);
+                    });
+                };
+                document.querySelector('select#kLieferadresse').addEventListener('change', applyDeliveryAddressType);
+                // A Packstation/Postfiliale can already be preselected when the page loads.
+                applyDeliveryAddressType();
             }
         }
-    )
+    ).then(function(EAO) {
+        if (!EAO) {
+            return;
+        }
+        window.EnderecoIntegrator.watchSubdivisionField(EAO, '[name="register[shipping_address][bundesland]"]');
+    }).catch(function(error) {
+        console.warn('Endereco shipping AMS initialization failed:', error);
+    });
+
     enderecoInitPS(
         {
             salutation: 'register[shipping_address][anrede]',

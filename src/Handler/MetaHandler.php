@@ -334,21 +334,42 @@ class MetaHandler
      * @param array<string,string> $postVariable The post request variable containing billing address information.
      *                            Expected keys are 'land' (country code), 'plz' (postal code),
      *                            'ort' (locality), 'strasse' (street name), 'hausnummer' (building number),
-     *                            and 'adresszusatz' (additional info), which is optional.
+     *                            'adresszusatz' (additional info) and 'bundesland' (state), which are optional.
      * @return array<string,string> An associative array containing the extracted billing address, formatted
      *               with keys as 'countryCode', 'postalCode', 'locality', 'streetName',
-     *               'buildingNumber', and 'additionalInfo'.
+     *               'buildingNumber' and, when submitted, 'additionalInfo' and 'subdivisionCode'.
      */
     public function extractBillingAddressFromPost($postVariable): array
     {
+        $countryCode = strtoupper($postVariable['land']);
+
         $address = [
-            'countryCode' => strtoupper($postVariable['land']),
+            'countryCode' => $countryCode,
             'postalCode' => $postVariable['plz'],
             'locality' => $postVariable['ort'],
             'streetName' => $postVariable['strasse'],
             'buildingNumber' => $postVariable['hausnummer'],
-            'additionalInfo' => $postVariable['adresszusatz'] ?? ''
         ];
+
+        // Optional fields stay absent when the form did not submit them, so the
+        // rebuilt cache key matches the browser's request. The state only takes
+        // part when the country has ISO subdivisions - NOVA's free-text fallback
+        // is not part of the frontend check either. The JTL form settings gate
+        // both fields so a tampered POST cannot diverge from buildAddressData().
+        if (
+            isset($postVariable['bundesland'])
+            && $this->enderecoService->isSubdivisionFieldEnabled(false)
+            && $this->enderecoService->countryHasSubdivisions($countryCode)
+        ) {
+            $address['subdivisionCode'] = $this->enderecoService->resolveSubdivisionCode(
+                $postVariable['bundesland'],
+                $countryCode
+            );
+        }
+
+        if (isset($postVariable['adresszusatz']) && $this->enderecoService->isAdditionalInfoFieldEnabled(false)) {
+            $address['additionalInfo'] = $postVariable['adresszusatz'];
+        }
 
         return $address;
     }
@@ -364,22 +385,40 @@ class MetaHandler
      * @param array<string,mixed> $postVariable The post request variable containing nested shipping address
      *                            information. Expected structure is $postVariable['register']['shipping_address']
      *                            with keys 'land' (country code), 'plz' (postal code), 'ort' (locality),
-     *                            'strasse' (street name), 'hausnummer' (building number), and
-     *                            'adresszusatz' (additional info), which is optional.
+     *                            'strasse' (street name), 'hausnummer' (building number), and the optional
+     *                            keys 'adresszusatz' (additional info) and 'bundesland' (state).
      * @return array<string,string> An associative array containing the extracted shipping address, with keys
-     *               as 'countryCode', 'postalCode', 'locality', 'streetName', 'buildingNumber',
-     *               and 'additionalInfo'.
+     *               as 'countryCode', 'postalCode', 'locality', 'streetName', 'buildingNumber'
+     *               and, when submitted, 'additionalInfo' and 'subdivisionCode'.
      */
     public function extractShippingAddressFromPost($postVariable): array
     {
+        $shippingPost = $postVariable['register']['shipping_address'];
+        $countryCode = strtoupper($shippingPost['land']);
+
         $address = [
-            'countryCode' => strtoupper($postVariable['register']['shipping_address']['land']),
-            'postalCode' => $postVariable['register']['shipping_address']['plz'],
-            'locality' => $postVariable['register']['shipping_address']['ort'],
-            'streetName' => $postVariable['register']['shipping_address']['strasse'],
-            'buildingNumber' => $postVariable['register']['shipping_address']['hausnummer'],
-            'additionalInfo' => $postVariable['register']['shipping_address']['adresszusatz'] ?? ''
+            'countryCode' => $countryCode,
+            'postalCode' => $shippingPost['plz'],
+            'locality' => $shippingPost['ort'],
+            'streetName' => $shippingPost['strasse'],
+            'buildingNumber' => $shippingPost['hausnummer'],
         ];
+
+        // See extractBillingAddressFromPost() for the optional-field rules.
+        if (
+            isset($shippingPost['bundesland'])
+            && $this->enderecoService->isSubdivisionFieldEnabled(true)
+            && $this->enderecoService->countryHasSubdivisions($countryCode)
+        ) {
+            $address['subdivisionCode'] = $this->enderecoService->resolveSubdivisionCode(
+                $shippingPost['bundesland'],
+                $countryCode
+            );
+        }
+
+        if (isset($shippingPost['adresszusatz']) && $this->enderecoService->isAdditionalInfoFieldEnabled(true)) {
+            $address['additionalInfo'] = $shippingPost['adresszusatz'];
+        }
 
         return $address;
     }

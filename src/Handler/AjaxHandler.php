@@ -40,6 +40,13 @@ class AjaxHandler
      */
     private function updateAddressData($addressObject, array $addressData)
     {
+        if (isset($addressData['subdivisionCode'])) {
+            // JTL persists plain state names ("Bayern"), not ISO codes ("DE-BY").
+            $addressObject->cBundesland = $this->enderecoService->resolveSubdivisionName(
+                Text::filterXSS($addressData['subdivisionCode']),
+                strtoupper($addressData['countryCode'] ?? ($addressObject->cLand ?? ''))
+            );
+        }
         $addressObject->cStrasse      = (isset($addressData['streetName']))
             ? Text::filterXSS($addressData['streetName']) : $addressObject->cStrasse;
         $addressObject->cHausnummer   = (isset($addressData['buildingNumber']))

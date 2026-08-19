@@ -14,7 +14,6 @@ module.exports = {
   optimization: {
     minimize: true,
     minimizer: [new TerserPlugin({
-      sourceMap: false,
       terserOptions: {
         output: {
           comments: false,
@@ -28,20 +27,26 @@ module.exports = {
       {
         test: /\.css$/,
         use: [
-          'css-loader',
+          {
+            loader: 'css-loader',
+            options: {
+              exportType: 'array',
+              esModule: false,
+            },
+          },
         ],
       },
       {
         test: /\.scss$/,
         use: [
-          'css-loader',
+          {
+            loader: 'css-loader',
+            options: {
+              exportType: 'array',
+              esModule: false,
+            },
+          },
           'sass-loader'
-        ],
-      },
-      {
-        test: /\.sass$/,
-        use: [
-          'sass-loader?indentedSyntax'
         ],
       },
       {
@@ -59,9 +64,9 @@ module.exports = {
       },
       {
         test: /\.(png|jpg|gif)$/,
-        loader: 'file-loader',
-        options: {
-          name: '[name].[ext]?[hash]'
+        type: 'asset/resource',
+        generator: {
+          filename: '[name][ext]?[hash]'
         }
       },
       {
@@ -69,11 +74,6 @@ module.exports = {
         use: {loader: 'html-loader'}
       }
     ]
-  },
-  devServer: {
-    historyApiFallback: true,
-    noInfo: true,
-    overlay: true
   },
   performance: {
     hints: false

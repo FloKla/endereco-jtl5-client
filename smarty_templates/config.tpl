@@ -7,7 +7,10 @@
         window.EnderecoIntegrator.onLoad = [];
     }
 
-    function setBlurListener(EAO, elements) {
+    // Person services still rely on this listener to replay NOVA's validation
+    // events after the SDK writes values. AMS fields are handled by the
+    // prepareDOMElement hook in the bundle instead.
+    function setPersonServicesBlurListener(EPO, elements) {
         for (const key in elements) {
             if (Object.prototype.hasOwnProperty.call(elements, key)) {
                 const selector = elements[key];
@@ -19,30 +22,33 @@
                 if (element) {
                     element.addEventListener('endereco-blur', function(e) {
                         // Dispatch 'focus' and 'blur' events on the target element
-                        e.target.dispatchEvent(new EAO.util.CustomEvent('focus', { bubbles: true, cancelable: true }));
-                        e.target.dispatchEvent(new EAO.util.CustomEvent('blur', { bubbles: true, cancelable: true }));
-                        e.target.dispatchEvent(new EAO.util.CustomEvent('focus', { bubbles: true, cancelable: true }));
+                        e.target.dispatchEvent(new EPO.util.CustomEvent('focus', { bubbles: true, cancelable: true }));
+                        e.target.dispatchEvent(new EPO.util.CustomEvent('blur', { bubbles: true, cancelable: true }));
+                        e.target.dispatchEvent(new EPO.util.CustomEvent('focus', { bubbles: true, cancelable: true }));
                     });
                 }
             }
         }
     }
-    function enderecoInitAMS(prefix, config, cb = undefined) {
-        if (undefined !== window.EnderecoIntegrator.initAMS) {
-            const $EAO = window.EnderecoIntegrator.initAMS(prefix, config);
-            setBlurListener($EAO, prefix);
-            if (cb) {
-                cb($EAO);
+    function enderecoInitAMS(selectors, config, cb = undefined) {
+        return new Promise(function(resolve, reject) {
+            const initiate = function() {
+                window.EnderecoIntegrator.initAMS(selectors, config).then(function(EAO) {
+                    let callbackReturn;
+                    if (cb) {
+                        callbackReturn = cb(EAO);
+                    }
+                    Promise.resolve(callbackReturn).then(function() {
+                        resolve(EAO);
+                    }).catch(reject);
+                }).catch(reject);
+            };
+            if (undefined !== window.EnderecoIntegrator.initAMS) {
+                initiate();
+            } else {
+                window.EnderecoIntegrator.onLoad.push(initiate);
             }
-        } else {
-            window.EnderecoIntegrator.onLoad.push( function() {
-                const $EAO = window.EnderecoIntegrator.initAMS(prefix, config);
-                setBlurListener($EAO, prefix);
-                if (cb) {
-                    cb($EAO);
-                }
-            });
-        }
+        });
     }
     function enderecoInitES(prefix, config) {
         if (undefined !== window.EnderecoIntegrator.initEmailServices) {
@@ -54,13 +60,13 @@
         }
     }
     function enderecoInitPS(prefix, config) {
-        if (undefined !== window.EnderecoIntegrator.initEmailServices) {
+        if (undefined !== window.EnderecoIntegrator.initPersonServices) {
             const $EPO = window.EnderecoIntegrator.initPersonServices(prefix, config);
-            setBlurListener($EPO, prefix);
+            setPersonServicesBlurListener($EPO, prefix);
         } else {
             window.EnderecoIntegrator.onLoad.push( function() {
                 const $EPO = window.EnderecoIntegrator.initPersonServices(prefix, config);
-                setBlurListener($EPO, prefix);
+                setPersonServicesBlurListener($EPO, prefix);
             });
         }
     }
@@ -126,6 +132,16 @@
                 postal_code_needs_correction: '{$endereco_locales->getTranslation('endereco_jtl5_client_status_error_postal_code_needs_correction')|escape}',
                 country_code_needs_correction: '{$endereco_locales->getTranslation('endereco_jtl5_client_status_error_country_code_needs_correction')|escape}'
                 {literal}
+            },
+            errorMessages: {
+                {/literal}
+                address_has_missing_building_number_content: '{$endereco_locales->getTranslation('endereco_jtl5_client_error_missing_building_number')|escape}',
+                address_has_unresolvable_building_number_content: '{$endereco_locales->getTranslation('endereco_jtl5_client_error_unresolvable_building_number')|escape}',
+                packstation_has_unresolvable_address: '{$endereco_locales->getTranslation('endereco_jtl5_client_error_unresolvable_packstation')|escape}',
+                postoffice_has_unresolvable_address: '{$endereco_locales->getTranslation('endereco_jtl5_client_error_unresolvable_postoffice')|escape}',
+                packstation_has_unresolvable_postnummer: '{$endereco_locales->getTranslation('endereco_jtl5_client_error_invalid_postnummer')|escape}',
+                packstation_has_missing_postnummer: '{$endereco_locales->getTranslation('endereco_jtl5_client_error_missing_postnummer')|escape}'
+                {literal}
             }
         };
         window.EnderecoIntegrator.activeServices = {
@@ -142,7 +158,6 @@
         window.EnderecoIntegrator.onLoad.forEach( function(callback) {
             callback();
         });
-        //window.EnderecoIntegrator.countryCodeToNameMapping = {};
         window.EnderecoIntegrator.ready = true;
     }
 
@@ -154,7 +169,7 @@
         }
 
         const form = sampleRadio.closest('form');
-        
+
         if (!form) {
             return;
         }
@@ -171,8 +186,8 @@
             }
 
             if (
-                isAnyChecked && 
-                window.EnderecoIntegrator && 
+                isAnyChecked &&
+                window.EnderecoIntegrator &&
                 window.EnderecoIntegrator.integratedObjects.shipping_address_ams
             ) {
                 window.EnderecoIntegrator.integratedObjects.shipping_address_ams.addressStatus = [];

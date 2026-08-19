@@ -1,54 +1,55 @@
-<div class="endereco-fake-addresses" style="display: none !important">
-    <div>
-        <input id="endereco_billing_countrycode" type="text" value="{$endereco_billing_countrycode}">
-        <input id="endereco_billing_postal_code" type="text" value="{$endereco_billing_postal_code}">
-        <input id="endereco_billing_locality" type="text" value="{$endereco_billing_locality}">
-        <input id="endereco_billing_street_name" type="text" value="{$endereco_billing_street_name}">
-        <input id="endereco_billing_building_number" type="text" value="{$endereco_billing_building_number}">
-        <input id="endereco_billing_addinfo" type="text" value="{$endereco_billing_addinfo}">
+<form class="endereco-fake-addresses" action="#" method="post">
+    <div style="display: none !important">
+        <input id="endereco_billing_countrycode" type="text" value="{$endereco_billing_countrycode|escape:'html'}">
+        {if $endereco_billing_has_subdivision}
+            <input id="endereco_billing_subdivision_code" type="text" value="{$endereco_billing_subdivision_code|escape:'html'}" data-endereco-subdivision-active="true">
+        {/if}
+        <input id="endereco_billing_postal_code" type="text" value="{$endereco_billing_postal_code|escape:'html'}">
+        <input id="endereco_billing_locality" type="text" value="{$endereco_billing_locality|escape:'html'}">
+        <input id="endereco_billing_street_name" type="text" value="{$endereco_billing_street_name|escape:'html'}">
+        <input id="endereco_billing_building_number" type="text" value="{$endereco_billing_building_number|escape:'html'}">
+        {if $endereco_billing_has_addinfo}
+            <input id="endereco_billing_addinfo" type="text" value="{$endereco_billing_addinfo|escape:'html'}">
+        {/if}
 
-        <input id="endereco_billing_ts" type="text" value="{$endereco_billing_ts}">
+        <input id="endereco_billing_ts" type="text" value="{$endereco_billing_ts|escape:'html'}">
         <input id="endereco_billing_status" type="text" value="{$endereco_billing_status|escape:'html'}">
         <input id="endereco_billing_predictions" type="text" value="{$endereco_billing_predictions|escape:'html'}">
 
         <input
                 id="endereco_billing_address"
                 data-customer-id="{$Kunde->kKunde}"
-                data-country-code="{$endereco_billing_countrycode}"
-                data-postal-code="{$endereco_billing_postal_code}"
-                data-locality="{$endereco_billing_locality}"
-                data-street-name="{$endereco_billing_street_name}"
-                data-building-number="{$endereco_billing_building_number}"
-                data-additional-info="{$endereco_billing_addinfo}"
+                data-country-code="{$endereco_billing_countrycode|escape:'html'}"
+                data-postal-code="{$endereco_billing_postal_code|escape:'html'}"
+                data-locality="{$endereco_billing_locality|escape:'html'}"
+                data-street-name="{$endereco_billing_street_name|escape:'html'}"
+                data-building-number="{$endereco_billing_building_number|escape:'html'}"
+                data-additional-info="{$endereco_billing_addinfo|escape:'html'}"
                 data-copy-shipping="{if !$endereco_shipping_address_is_different}true{else}false{/if}"
         >
     </div>
 
     <script>
-        var ioUrl = ''
-        {if $endereco_jtl_5_1_legacymode}
-            ioUrl = 'io.php?io=endereco_inner_request';
-        {else}
-            ioUrl = 'io?io=endereco_inner_request';
-        {/if}
         {literal}
         (function() {
+            var ioUrl = 'io?io=endereco_inner_request';
+
             function afterCreateHandler(EAO) {
                 if (!EAO) {
                     return;
                 }
 
-                const handleAddressConfirmation = function() {
-                    postAddressData(EAO);
-                };
+                EAO.onEditAddress.push(function() {
+                    window.location = 'bestellvorgang.php?editRechnungsadresse=1';
+                });
 
-                EAO.waitForAllExtension().then( function() {
-                    EAO.onEditAddress.push(function() {
-                        window.location = 'bestellvorgang.php?editRechnungsadresse=1';
-                    });
-                    EAO.onConfirmAddress.push(handleAddressConfirmation);
-                    EAO.onAfterAddressCheckSelected.push(handleAddressConfirmation);
-                })
+                EAO.onAfterAddressPersisted.push(function(addressObject, result) {
+                    if (!result || 'finished' !== result.processStatus) {
+                        return;
+                    }
+                    // The SDK awaits this Promise before it continues processing.
+                    return postAddressData(addressObject);
+                });
             }
 
             function postAddressData(EAO) {
@@ -56,8 +57,9 @@
                 if (!originalAddress) {
                     return;
                 }
-                EAO._awaits++;
-                EAO.util.axios({
+                const coordinator = window.EnderecoIntegrator.jtlReviewCoordinator;
+                coordinator.beginUpdate();
+                return EAO.util.axios({
                     method: 'post',
                     url: ioUrl,
                     data: {
@@ -81,47 +83,41 @@
                             }
                         }
                     }
-                }).then(function(response) {
-                    const reloadHandler = () => {
-                        EAO.waitForAllPopupsToClose().then(() => {
-                            window.setTimeout(() => {
-                                if(window.EnderecoIntegrator.popupQueue > 0) {
-                                    // We are still waiting for all popups to close
-                                    reloadHandler();
-                                    return;
-                                }
-                                window.location.href = window.location.href;
-                            }, 100);
-                        });
-                    }
-                    reloadHandler();
+                }).then(function() {
+                    coordinator.finishUpdate(true);
                 }).catch(function(error) {
+                    // Fail open: log the failure, never fake a success and never
+                    // block the checkout on it.
                     console.error('Error during address update:', error);
-                }).finally(function() {
-                    EAO._awaits--;
+                    coordinator.finishUpdate(false);
                 });
             }
 
             enderecoInitAMS(
-                '',
                 {
-                    name: 'billing_address',
+                    countryCode: '#endereco_billing_countrycode',
+                    subdivisionCode: '#endereco_billing_subdivision_code',
+                    postalCode: '#endereco_billing_postal_code',
+                    locality: '#endereco_billing_locality',
+                    streetName: '#endereco_billing_street_name',
+                    buildingNumber: '#endereco_billing_building_number',
+                    additionalInfo: '#endereco_billing_addinfo',
+                    addressStatus: '#endereco_billing_status',
+                    addressTimestamp: '#endereco_billing_ts',
+                    addressPredictions: '#endereco_billing_predictions'
+                },
+                {
+                    name: 'billing_address_ams',
                     addressType: 'billing_address',
-                    postfixCollection: {
-                        countryCode: '#endereco_billing_countrycode',
-                        postalCode: '#endereco_billing_postal_code',
-                        locality: '#endereco_billing_locality',
-                        streetName: '#endereco_billing_street_name',
-                        buildingNumber: '#endereco_billing_building_number',
-                        additionalInfo: '#endereco_billing_addinfo',
-                        addressTimestamp: '#endereco_billing_ts',
-                        addressStatus: '#endereco_billing_status',
-                        addressPredictions: '#endereco_billing_predictions'
-                    }
+                    intent: 'review',
+                    targetSelector: 'body',
+                    insertPosition: 'beforeend'
                 },
                 afterCreateHandler
-            );
+            ).catch(function(error) {
+                console.warn('Endereco billing review initialization failed:', error);
+            });
         })();
     </script>
     {/literal}
-</div>
+</form>
