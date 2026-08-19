@@ -75,9 +75,9 @@ class CurlEnderecoTransport implements EnderecoTransport
                 'durationMs' => $this->duration($startedAt),
             ];
         } finally {
-            if ($handle !== null && $handle !== false) {
-                curl_close($handle);
-            }
+            // Release the handle by dropping the reference. curl_close() has had no effect
+            // since PHP 8.0 and is deprecated as of PHP 8.5.
+            $handle = null;
         }
 
         if ($errorCode !== CURLE_OK) {
